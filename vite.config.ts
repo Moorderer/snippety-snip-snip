@@ -1,45 +1,42 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
-import { copyFileSync, mkdirSync, existsSync, writeFileSync, readFileSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs';
 
-const isFirefox = process.env.MODE === 'firefox';
-const isChrome = process.env.MODE === 'chrome';
-const outDir = isFirefox ? 'dist-firefox' : isChrome ? 'dist-chrome' : 'dist';
+function copyDirSync(src: string, dest: string) {
+  if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src)) {
+    const s = `${src}/${entry}`, d = `${dest}/${entry}`;
+    if (statSync(s).isDirectory()) copyDirSync(s, d);
+    else copyFileSync(s, d);
+  }
+}
 
 export default defineConfig(({ mode }) => {
   const firefox = mode === 'firefox';
   const dev = mode === 'development';
+  const outDir = firefox ? 'dist-firefox' : mode === 'chrome' ? 'dist-chrome' : 'dist';
 
   return {
     plugins: [
       react(),
       {
-        name: 'copy-manifest-and-assets',
+        name: 'sss-copy-manifest',
         closeBundle() {
-          // Copy appropriate manifest
+          if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
           const manifestSrc = firefox
             ? 'manifests/manifest.firefox.json'
             : 'manifests/manifest.chrome.json';
-          const dest = outDir;
-          if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
-          copyFileSync(manifestSrc, `${dest}/manifest.json`);
-
-          // Copy static assets
-          ['icons', 'fonts'].forEach((dir) => {
-            if (existsSync(`public/${dir}`)) {
-              copyDirSync(`public/${dir}`, `${dest}/${dir}`);
-            }
-          });
-
-          console.warn(`[SSS] Built for ${firefox ? 'Firefox' : 'Chrome/Edge'} → ${dest}/`);
-        }
-      }
+          copyFileSync(manifestSrc, `${outDir}/manifest.json`);
+          if (existsSync('public/icons')) copyDirSync('public/icons', `${outDir}/icons`);
+          console.warn(`[SSS] built for ${firefox ? 'Firefox' : 'Chrome/Edge'} → ${outDir}/`);
+        },
+      },
     ],
     define: {
       __FIREFOX__: JSON.stringify(firefox),
       __DEV__: JSON.stringify(dev),
-      __VERSION__: JSON.stringify('1.0.0')
+      __VERSION__: JSON.stringify('1.0.0'),
     },
     build: {
       outDir,
@@ -58,21 +55,11 @@ export default defineConfig(({ mode }) => {
           entryFileNames: '[name]/index.js',
           chunkFileNames: 'shared/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]',
-        }
-      }
+        },
+      },
     },
     resolve: {
-      alias: { '@': resolve(__dirname, 'src') }
-    }
+      alias: { '@': resolve(__dirname, 'src') },
+    },
   };
 });
-
-function copyDirSync(src: string, dest: string) {
-  if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
-  const { readdirSync, statSync } = require('fs') as typeof import('fs');
-  for (const entry of readdirSync(src)) {
-    const s = `${src}/${entry}`, d = `${dest}/${entry}`;
-    if (statSync(s).isDirectory()) copyDirSync(s, d);
-    else copyFileSync(s, d);
-  }
-}
